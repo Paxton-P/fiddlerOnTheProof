@@ -331,9 +331,9 @@ def compute_loss(theta1, theta2, theta3, center_point, verbose=False):
     areas = get_slice_areas(slice1_intersection, slice2_intersection, slice3_intersection, center_point)
     perims = get_slice_perimeters(slice1_intersection, slice2_intersection, slice3_intersection)
 
-    if verbose:
-        print(f'Areas: {areas.detach()}')
-        print(f'Perimeters: {perims.detach()}')
+    # if verbose:
+        # print(f'Areas: {areas.detach()}')
+        # print(f'Perimeters: {perims.detach()}')
 
     target_area = torch.tensor([200./3, 200./3, 200./3])
     target_perim = torch.tensor([20, 20, 20])
@@ -382,7 +382,7 @@ def draw_cake(center_point, theta1, theta2, theta3):
     canva.pack()
     window.mainloop()
 
-def training_loop(running_flag=1, print_output=False, plot_results=False):
+def training_loop(thread_num=0, thresh=.0001, max_iterations=100000, learning_rate=0.00001, print_output=False, plot_results=False):
     center_point = torch.tensor([[np.random.uniform(0, 20)],[np.random.uniform(0, 10)]], requires_grad=True)
 
     theta1 = torch.tensor(np.random.uniform(0, 2 * np.pi), requires_grad=True)
@@ -394,21 +394,20 @@ def training_loop(running_flag=1, print_output=False, plot_results=False):
     if plot_results:
         draw_cake(center_point, theta1, theta2, theta3)
 
-    optimizer = torch.optim.SGD([theta1, theta2, theta3, center_point], lr=0.00001)
+    optimizer = torch.optim.SGD([theta1, theta2, theta3, center_point], lr=learning_rate)
     prev_loss = torch.inf
-    thresh = .0001
-    max_iterations = 100000
     i = 0
     while prev_loss > thresh and i < max_iterations:
         loss = compute_loss(theta1, theta2, theta3, center_point, i % 100 == 0 and print_output)
 
         if i % 100 == 0 and print_output:
-            print(f'Step {i}:')
-            print(f'Theta 1: {theta1.detach()}')
-            print(f'Theta 2: {theta2.detach()}')
-            print(f'Theta 3: {theta3.detach()}')
-            print(f'Center Point: {center_point.detach()}')
-            print(f'Loss :{float(loss.detach())}\n')
+            # print(f'Thread: {thread_num}')
+            # print(f'Step {i}:')
+            # print(f'Theta 1: {theta1.detach()}')
+            # print(f'Theta 2: {theta2.detach()}')
+            # print(f'Theta 3: {theta3.detach()}')
+            print(f'Center Point {thread_num}: {center_point.detach()}')
+            print(f'Loss {thread_num}:{float(loss.detach())}\n')
 
         losses += [loss.detach()]
 
@@ -430,43 +429,17 @@ def training_loop(running_flag=1, print_output=False, plot_results=False):
     center_points += [center_point.detach().tolist()]
     final_losses += [loss.detach().tolist()]
 
-    running_flag = 0
 
 def main():
-    # num_threads = 10
-    # threads = [threading.Thread(target=training_loop, name=str(thread_num)) for thread_num in range(num_threads)]
+    num_threads = 2
+    threads = [threading.Thread(target=training_loop, name=str(thread_num), kwargs={'thread_num': thread_num, 'max_iterations': 700_000, 'print_output': True}) 
+               for thread_num in range(num_threads)]
 
-    # for thread in threads:
-    #     thread.start()
+    for thread in threads:
+        thread.start()
     
-    # for thread in threads:
-    #     thread.join()
-
-    running_flag = mp.Value("i", 1)
-
-    workr = mp.Process(target=training_loop, args=(running_flag, True, True))
-    wdog = mp.Process(target=watchdog, args=(,))
-
-    # run the watchdog as daemon so it terminates with the main process
-    wdog.daemon = True
-
-    workr.start()
-    print("[MAIN]: starting process P1")
-    wdog.start()
-
-    # Poll the queue
-    while True:
-        msg = q.get()
-        if msg == "KILL WORKER":
-            print("[MAIN]: Terminating slacking WORKER")
-            workr.terminate()
-            time.sleep(0.1)
-            if not workr.is_alive():
-                print("[MAIN]: WORKER is a goner")
-                workr.join(timeout=1.0)
-                print("[MAIN]: Joined WORKER successfully!")
-                q.close()
-                break # watchdog process daemon gets terminated
+    for thread in threads:
+        thread.join()
 
     print(center_points)
     xs = [point[0][0] for point in center_points]
